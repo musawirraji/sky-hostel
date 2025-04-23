@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
+import Script from 'next/script';
 
 export const metadata: Metadata = {
   title: 'SkyHostel',
@@ -14,6 +15,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang='en'>
+      <head>
+        <Script
+          src='https://remitademo.net/payment/v1/remita-pay-inline.bundle.js'
+          strategy='afterInteractive'
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

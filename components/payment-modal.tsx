@@ -37,7 +37,7 @@ export function PaymentModal({ children }: PaymentModalProps) {
       <div onClick={() => setOpen(true)}>{children}</div>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className='sm:max-w-md bg-white overflow-y-auto px-4'>
+        <DialogContent className='sm:max-w-md max-h-[90vh] bg-white overflow-y-auto px-4'>
           <DialogHeader>
             <DialogTitle>Choose Payment Method</DialogTitle>
             <DialogDescription>

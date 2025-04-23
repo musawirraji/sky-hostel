@@ -163,7 +163,7 @@ export function RemitaButton({
     <Button
       onClick={handleClick}
       disabled={!sdkReady || loading}
-      className='px-8 bg-blue-600 hover:bg-blue-700 w-full md:w-auto'
+      className='px-8 bg-blue-600 hover:bg-blue-700 w-[70%]  md:w-auto text-white'
     >
       {loading ? (
         <>

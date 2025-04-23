@@ -81,11 +81,11 @@ body {
     --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
-.scrollbar-hide::-webkit-scrollbar {
+/* .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
 
 .scrollbar-hide {
-  -ms-overflow-style: none; /* IE and Edge */
-  scrollbar-width: none; /* Firefox */
-}
+  -ms-overflow-style: none; 
+  scrollbar-width: none; 
+} */
