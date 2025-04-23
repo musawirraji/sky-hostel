@@ -95,7 +95,7 @@ export function RemitaButton({
 
     try {
       const engine = window.RmPaymentEngine.init({
-        key: process.env.NEXT_PUBLIC_REMITA_KEY as string,
+        key: 'QzAwMDAyNzEyNTl8MTEwNjE4NjF8OWZjOWYwNmMyZDk3MDRhYWM3YThiOThlNTNjZTE3ZjYxOTY5NDdmZWE1YzU3NDc0ZjE2ZDZjNTg1YWYxNWY3NWM4ZjMzNzZhNjNhZWZlOWQwNmJhNTFkMjIxYTRiMjYzZDkzNGQ3NTUxNDIxYWNlOGY4ZWEyODY3ZjlhNGUwYTY=',
         transactionId: `${Date.now()}`,
         customerId: email,
         firstName,
