@@ -1,14 +1,8 @@
+// utils/remita-api.ts
+
 import crypto from 'crypto';
 
-const REMITA_API_BASE_URL =
-  process.env.REMITA_API_BASE_URL || 'https://api-demo.systemspecsng.com';
-const REMITA_API_KEY =
-  process.env.REMITA_API_KEY ||
-  'sk_test_S5AvzBbJZygTKGzeSYIHuWfUNaKGJk4uUuI+px8soitsHCXdMJ6XHKXT72WO9RcP';
-const REMITA_MERCHANT_ID = process.env.REMITA_MERCHANT_ID || '2547916';
-const REMITA_SERVICE_TYPE_ID = process.env.REMITA_SERVICE_TYPE_ID || '4430731';
-
-interface RemitaInitResponse {
+export interface RemitaInitResponse {
   statuscode?: string;
   status?: string;
   message?: string;
@@ -19,7 +13,7 @@ interface RemitaInitResponse {
   hash?: string;
 }
 
-interface RemitaParams {
+export interface RemitaParams {
   amount: number;
   payerName: string;
   payerEmail: string;
@@ -28,6 +22,19 @@ interface RemitaParams {
   orderId: string;
 }
 
+// Pull in your base URL, secret key, merchant & service IDs from env
+const API_BASE =
+  process.env.REMITA_API_BASE_URL?.replace(/\/$/, '') ||
+  'https://api-demo.systemspecsng.com';
+const REMITA_API_KEY =
+  process.env.REMITA_API_KEY ||
+  'sk_test_S5AvzBbJZygTKGzeSYIHuWfUNaKGJk4uUuI+px8soitsHCXdMJ6XHKXT72WO9RcP';
+const REMITA_MERCHANT_ID = process.env.REMITA_MERCHANT_ID || '2547916';
+const REMITA_SERVICE_TYPE_ID = process.env.REMITA_SERVICE_TYPE_ID || '4430731';
+
+/**
+ * Call Remita’s real paymentinit endpoint to get an RRR.
+ */
 export async function generateRemitaRRR(params: RemitaParams): Promise<{
   success: boolean;
   rrr?: string;
@@ -42,26 +49,18 @@ export async function generateRemitaRRR(params: RemitaParams): Promise<{
       amount: params.amount,
     });
 
-    // Generate hash for Remita authentication
-    // Format: SHA512(merchantId+serviceTypeId+orderId+amount+apiKey)
-    const hashedApiKey = crypto
-      .createHash('sha512')
-      .update(
-        `${REMITA_MERCHANT_ID}${REMITA_SERVICE_TYPE_ID}${params.orderId}${params.amount}${REMITA_API_KEY}`
-      )
-      .digest('hex');
+    // Build the authentication hash
+    const raw = `${REMITA_MERCHANT_ID}${REMITA_SERVICE_TYPE_ID}${params.orderId}${params.amount}${REMITA_API_KEY}`;
+    const hashedApiKey = crypto.createHash('sha512').update(raw).digest('hex');
 
     console.log('Generated authentication hash');
 
-    const myHeaders = new Headers();
-    myHeaders.append('Content-Type', 'application/json');
-    // Use the correct authentication format for Remita
-    myHeaders.append(
-      'Authorization',
-      `remitaConsumerKey=${REMITA_MERCHANT_ID},remitaConsumerToken=${hashedApiKey}`
-    );
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      Authorization: `remitaConsumerKey=${REMITA_MERCHANT_ID},remitaConsumerToken=${hashedApiKey}`,
+    });
 
-    const requestBody = JSON.stringify({
+    const body = JSON.stringify({
       serviceTypeId: REMITA_SERVICE_TYPE_ID,
       amount: params.amount.toString(),
       orderId: params.orderId,
@@ -71,45 +70,23 @@ export async function generateRemitaRRR(params: RemitaParams): Promise<{
       description: params.description,
     });
 
-    console.log('Request payload:', requestBody);
-    console.log(
-      'Request URL:',
-      `${REMITA_API_BASE_URL}/remita/exapp/api/v1/send/api/echannelsvc/merchant/api/paymentinit`
-    );
+    const url = `${API_BASE}/remita/exapp/api/v1/send/api/echannelsvc/merchant/api/paymentinit`;
+    console.log('Request URL:', url);
+    console.log('Request payload:', body);
 
-    if (
-      process.env.NEXT_PUBLIC_REMITA_ENV === 'demo' &&
-      process.env.USE_MOCK_ON_VERCEL === 'true'
-    ) {
-      console.log('Using mock implementation for RRR generation');
-      return generateMockRRR(params);
+    // Fetch the Remita endpoint
+    const res = await fetch(url, { method: 'POST', headers, body });
+    console.log('Response status:', res.status);
+    const text = await res.text();
+    console.log('Response text:', text);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${text}`);
     }
 
-    const requestOptions = {
-      method: 'POST',
-      headers: myHeaders,
-      body: requestBody,
-    };
+    const result = JSON.parse(text) as RemitaInitResponse;
 
-    // Demo endpoint for invoice/RRR generation
-    const response = await fetch(
-      `${REMITA_API_BASE_URL}/remita/exapp/api/v1/send/api/echannelsvc/merchant/api/paymentinit`,
-      requestOptions
-    );
-
-    console.log('Response status:', response.status);
-    const responseText = await response.text();
-    console.log('Response text:', responseText);
-
-    if (!response.ok) {
-      throw new Error(
-        `HTTP error! status: ${response.status}, response: ${responseText}`
-      );
-    }
-
-    const result = JSON.parse(responseText) as RemitaInitResponse;
-
-    // Check if the RRR generation was successful
+    // Remita uses statuscode "025" to indicate success
     if (result.statuscode === '025' && result.RRR) {
       return {
         success: true,
@@ -123,18 +100,20 @@ export async function generateRemitaRRR(params: RemitaParams): Promise<{
         error: result.message || 'Failed to generate RRR',
       };
     }
-  } catch (error) {
-    console.error('Error generating Remita RRR:', error);
+  } catch (err) {
+    console.error('Error generating Remita RRR:', err);
     return {
       success: false,
       error:
-        error instanceof Error ? error.message : 'An unknown error occurred',
+        err instanceof Error
+          ? err.message
+          : 'An unknown error occurred during RRR generation',
     };
   }
 }
 
 /**
- * Check the status of a payment with a given RRR
+ * Check Remita retrieval reference (RRR) payment status.
  */
 export async function checkRemitaRRRStatus(rrr: string): Promise<{
   success: boolean;
@@ -143,31 +122,24 @@ export async function checkRemitaRRRStatus(rrr: string): Promise<{
   error?: string;
 }> {
   try {
-    const myHeaders = new Headers();
-    myHeaders.append('Content-Type', 'application/json');
+    const url = `${API_BASE}/remita/exapp/api/v1/send/api/echannelsvc/merchant/api/payment/status/${REMITA_MERCHANT_ID}/${rrr}/${REMITA_API_KEY}`;
+    console.log('Checking RRR status with URL:', url);
 
-    const requestOptions = {
+    const res = await fetch(url, {
       method: 'GET',
-      headers: myHeaders,
-    };
-
-    const apiUrl = `${REMITA_API_BASE_URL}/remita/exapp/api/v1/send/api/echannelsvc/merchant/api/payment/status/${REMITA_MERCHANT_ID}/${rrr}/${REMITA_API_KEY}`;
-    console.log('Checking RRR status with URL:', apiUrl);
-
-    const response = await fetch(apiUrl, requestOptions);
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
     }
 
-    const result = await response.json();
-    console.log('RRR status check result:', result);
+    const json = await res.json();
+    console.log('RRR status result:', json);
 
     let status: 'pending' | 'completed' | 'failed' = 'pending';
-
-    if (result.status === '00' || result.status === '01') {
+    if (json.status === '00' || json.status === '01') {
       status = 'completed';
-    } else if (result.status === '021' || result.status === '020') {
+    } else if (json.status === '021' || json.status === '020') {
       status = 'pending';
     } else {
       status = 'failed';
@@ -176,21 +148,22 @@ export async function checkRemitaRRRStatus(rrr: string): Promise<{
     return {
       success: true,
       status,
-      statusMessage: result.message || result.statusMessage,
+      statusMessage: json.message || json.statusMessage,
     };
-  } catch (error) {
-    console.error('Error checking Remita RRR status:', error);
+  } catch (err) {
+    console.error('Error checking Remita RRR status:', err);
     return {
       success: false,
       error:
-        error instanceof Error ? error.message : 'An unknown error occurred',
+        err instanceof Error
+          ? err.message
+          : 'An unknown error occurred during status check',
     };
   }
 }
 
 /**
- * Generate a mock RRR for development and testing
- * This is useful when you don't want to call the actual Remita API
+ * Generate a mock RRR for dev/testing.
  */
 export async function generateMockRRR(params: RemitaParams): Promise<{
   success: boolean;
@@ -199,29 +172,18 @@ export async function generateMockRRR(params: RemitaParams): Promise<{
   error?: string;
 }> {
   try {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Generate a mock RRR (9-digit number)
+    await new Promise((r) => setTimeout(r, 500));
     const mockRRR = `${Math.floor(Math.random() * 900000000) + 100000000}`;
-
-    console.log(
-      'Mock Remita API - Generated RRR:',
-      mockRRR,
-      'for order:',
-      params.orderId
-    );
-
-    return {
-      success: true,
-      rrr: mockRRR,
-      statusMessage: 'Payment Reference generated',
-    };
-  } catch (error) {
-    console.error('Error in mock RRR generation:', error);
+    console.log('Mock RRR generated:', mockRRR, 'orderId:', params.orderId);
+    return { success: true, rrr: mockRRR, statusMessage: 'Mock RRR generated' };
+  } catch (err) {
+    console.error('Error in mock RRR generation:', err);
     return {
       success: false,
       error:
-        error instanceof Error ? error.message : 'An unknown error occurred',
+        err instanceof Error
+          ? err.message
+          : 'An unknown error occurred in mock RRR generation',
     };
   }
 }

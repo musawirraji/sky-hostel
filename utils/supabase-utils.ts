@@ -1,9 +1,18 @@
+// utils/supabase-utils.ts
+
 import { createClient } from '@supabase/supabase-js';
 import { generateRemitaRRR, generateMockRRR } from './remita-api';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+interface GenerateRRRResponse {
+  success: boolean;
+  rrr?: string;
+  transactionId?: string;
+  error?: string;
+}
 
 export const generateRRR = async (studentDetails: {
   matricNumber: string;
@@ -12,27 +21,24 @@ export const generateRRR = async (studentDetails: {
   email: string;
   amount: number;
   phoneNumber?: string;
-}): Promise<{
-  success: boolean;
-  rrr?: string;
-  transactionId?: string;
-  error?: string;
-}> => {
+}): Promise<GenerateRRRResponse> => {
   try {
     console.log('Starting RRR generation for:', studentDetails.matricNumber);
 
-    // Check if student exists
+    // Lookup student to get phone if not provided
     const { data: student, error: studentError } = await supabase
       .from('students')
       .select('id, phone_number')
       .eq('matric_number', studentDetails.matricNumber)
       .single();
 
-    // Generate a unique order ID regardless of student existence
-    const orderId = `FEE-${studentDetails.matricNumber}-${Date.now()}`;
-    const useMockImplementation = process.env.NODE_ENV === 'development';
+    if (studentError) {
+      console.warn('Error fetching student, continuing without:', studentError);
+    }
 
-    // Get Remita parameters
+    const orderId = `FEE-${studentDetails.matricNumber}-${Date.now()}`;
+
+    // Build the RemitaParams
     const remitaParams = {
       amount: studentDetails.amount,
       payerName: `${studentDetails.firstName} ${studentDetails.lastName}`,
@@ -40,16 +46,20 @@ export const generateRRR = async (studentDetails: {
       payerPhone:
         studentDetails.phoneNumber || student?.phone_number || '08000000000',
       description: `School Fee Payment for ${studentDetails.matricNumber}`,
-      orderId: orderId,
+      orderId,
     };
 
-    // Use mock or real Remita API
+    // Decide sandbox vs. live by your env flag
+    const useSandboxMode =
+      process.env.NODE_ENV === 'development' ||
+      process.env.NEXT_PUBLIC_REMITA_ENV === 'demo';
+
     let result;
-    if (useMockImplementation) {
-      console.log('Using mock RRR generation...');
+    if (useSandboxMode) {
+      console.log('Using SANDBOX (demo) Remita API');
       result = await generateMockRRR(remitaParams);
     } else {
-      console.log('Using real Remita API for RRR generation...');
+      console.log('Using LIVE Remita API');
       result = await generateRemitaRRR(remitaParams);
     }
 
@@ -59,14 +69,14 @@ export const generateRRR = async (studentDetails: {
 
     console.log('RRR generated successfully:', result.rrr);
 
-    // Create payment record with or without student_id
+    // Insert a pending payment record
     const paymentData = {
       student_id: student?.id || null,
       rrr: result.rrr,
       transaction_id: orderId,
       amount: studentDetails.amount,
       status: 'pending',
-      matriculation_number: studentDetails.matricNumber, // Always store matric number
+      matriculation_number: studentDetails.matricNumber,
     };
 
     const { error: paymentError } = await supabase
