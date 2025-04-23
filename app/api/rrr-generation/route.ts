@@ -23,6 +23,12 @@ interface RRRGenerationResponse {
 export async function POST(request: NextRequest) {
   console.log('RRR generation API route called');
 
+  console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log(
+    'Calling generateRRR with key:',
+    process.env.REMITA_SECRET_KEY?.slice(0, 4)
+  );
+
   try {
     const body = await request.json();
     console.log('Request body received:', JSON.stringify(body, null, 2));
